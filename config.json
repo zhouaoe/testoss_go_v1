@@ -1,0 +1,10 @@
+{
+  "endpoint": "oss-cn-shanghai.aliyuncs.com",
+  "bucketname": "yacai-shanghai-s",
+  "write_progress": true,
+  "read_progress": true,
+  "test_file_num": 1,
+  "threadNum": 1,
+  "cleanData": true,
+  "testFileSizeList": [4]
+}
