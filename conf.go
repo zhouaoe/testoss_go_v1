@@ -9,13 +9,16 @@ type OSSTestConfig struct {
 	ThreadNum        int    `json:"threadNum"`
 	CleanData        bool   `json:"cleanData"`
 	TestFileSizeList []int  `json:"testFileSizeList"`
+	ReadRange        int    `json:"read_range"`
+	TestDir          string `json:"test_dir"`
 }
 
 type MyFileInfo struct {
 	FileName string
 	Index    int
+	FileSize int
 }
 
-func NewMyFileInfo(fileName string, index int) MyFileInfo {
-	return MyFileInfo{FileName: fileName, Index: index}
+func NewMyFileInfo(fileName string, index int, fileSize int) MyFileInfo {
+	return MyFileInfo{FileName: fileName, Index: index, FileSize: fileSize}
 }

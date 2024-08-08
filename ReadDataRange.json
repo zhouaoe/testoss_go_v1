@@ -1,0 +1,12 @@
+{
+  "endpoint": "xxxx",
+  "bucketname": "xxx",
+  "write_progress": false,
+  "read_progress": true,
+  "read_range": 64,
+  "test_dir" : "1test0099/",
+  "test_file_num": 10000,
+  "threadNum": 8,
+  "cleanData": false,
+  "testFileSizeList": [64,1024, 4096]
+}

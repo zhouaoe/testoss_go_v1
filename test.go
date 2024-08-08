@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"os"
 	"runtime"
 	"strconv"
@@ -22,10 +23,13 @@ func handleError(err error) {
 	os.Exit(-1)
 }
 
-var test_dir string = "test0099/"
+var testDir string = "1testdefault01/"
 var testFileSizeList []int
 var testContentList = make(map[int][]byte)
 var debug bool
+var KB int = 1024
+
+//var readRange int = 0
 
 func myPrintf(format string, a ...interface{}) {
 	if debug {
@@ -34,10 +38,10 @@ func myPrintf(format string, a ...interface{}) {
 }
 
 //创建一个函数，输入为一个int，输出为test_prefix+int
-func getTestFilepath(i int, sizeSuffix int) MyFileInfo {
-	fileName := fmt.Sprintf("%s%08d_%d", test_dir, i, sizeSuffix)
+func getTestFilepath(i int, fileSizeKB int) MyFileInfo {
+	fileName := fmt.Sprintf("%s%08d_%d", testDir, i, fileSizeKB)
 	//myPrintf("gen fileName:", fileName)
-	return NewMyFileInfo(fileName, i)
+	return NewMyFileInfo(fileName, i, fileSizeKB)
 }
 
 //func readFlag() *bool {
@@ -51,9 +55,15 @@ func readJson() OSSTestConfig {
 	// Define flag for the JSON configuration file path
 	d := flag.Bool("debug", false, "debug flag")
 	jsonFilePath := flag.String("config", "config.json", "Path to the JSON configuration file")
+	//t := flag.String("test_dir", "1test/", "test_dir")
+	//r := flag.Int("read_range", 0, "read_range")
 
 	flag.Parse()
 	debug = *d
+	//testDir = *t
+	//readRange = *r
+
+	//fmt.Printf("debug %t testDir %s readRange %d \n", debug, testDir, readRange)
 
 	// Read the JSON configuration file
 	configBytes, err := ioutil.ReadFile(*jsonFilePath)
@@ -77,14 +87,17 @@ func readJson() OSSTestConfig {
 	myPrintf("Thread Number: %d\n", config.ThreadNum)
 	myPrintf("Clean Data: %t\n", config.CleanData)
 	myPrintf("Test File Size List: %v\n", config.TestFileSizeList)
+	myPrintf("Test Directory: %s\n", config.TestDir)
+	myPrintf("ReadRange: %v\n", config.ReadRange)
+
 	return config
 }
 
 func generate_test_data(testFileSizeList []int) {
 	//循环testFileSizeList，以testFileSizeList的值为testContentList的key
 	for _, size := range testFileSizeList {
-		//生成一个size大小的数据到内存
-		tempData := make([]byte, size)
+		//生成一个size大小的数据到内存  szie单位为KB
+		tempData := make([]byte, size*KB)
 		testContentList[size] = tempData
 	}
 	//打印testContentList的key
@@ -96,12 +109,14 @@ func main() {
 	testConfig := readJson()
 	//os.Exit(0)
 	endpoint := testConfig.Endpoint
-	bucketname := testConfig.BucketName
-	write_progress := testConfig.WriteProgress
-	read_progress := testConfig.ReadProgress
-	test_file_num := testConfig.TestFileNum
+	bucketName := testConfig.BucketName
+	writeProgress := testConfig.WriteProgress
+	readProgress := testConfig.ReadProgress
+	testFileNum := testConfig.TestFileNum
 	threadNum := testConfig.ThreadNum
 	cleanData := testConfig.CleanData
+	readRange := testConfig.ReadRange
+	testDir = testConfig.TestDir
 	testFileSizeList = testConfig.TestFileSizeList
 	generate_test_data(testFileSizeList)
 
@@ -121,26 +136,26 @@ func main() {
 	myPrintf("client:%#v\n", client)
 
 	// 填写存储空间名称，例如examplebucket。
-	bucket, err := client.Bucket(bucketname)
+	bucket, err := client.Bucket(bucketName)
 	if err != nil {
 		myPrintf("Error:", err)
 		os.Exit(-1)
 	}
 
-	if write_progress == true {
+	if writeProgress == true {
 		for key, value := range testContentList {
-			summary := NewOssTestSummary("upload", fmt.Sprintf("Object Size %d", key), test_file_num)
-			myPrintf("---------write data : filesize=%d threadNum=%d test_file_num=%d \n", key, threadNum, test_file_num)
-			writeData(bucket, threadNum, test_file_num, value, key, summary)
+			summary := NewOssTestSummary("upload", fmt.Sprintf("Object Size %d", key), testFileNum)
+			myPrintf("---------write data : filesize=%d threadNum=%d test_file_num=%d \n", key, threadNum, testFileNum)
+			writeData(bucket, threadNum, testFileNum, value, key, summary)
 			summary.PrintSummary()
 		}
 	}
 
-	if read_progress == true {
+	if readProgress == true {
 		for key, _ := range testContentList {
-			summary := NewOssTestSummary("download", fmt.Sprintf("Object Size %d", key), test_file_num)
-			myPrintf("---------read data : filesize=%d threadNum=%d test_file_num=%d \n", key, threadNum, test_file_num)
-			readData(bucket, threadNum, test_file_num, key, summary)
+			summary := NewOssTestSummary("download", fmt.Sprintf("Object Size %d", key), testFileNum)
+			myPrintf("---------read data : filesize=%d threadNum=%d test_file_num=%d \n", key, threadNum, testFileNum)
+			readData(bucket, threadNum, testFileNum, key, summary, readRange)
 			summary.PrintSummary()
 
 		}
@@ -160,7 +175,7 @@ func main() {
 
 }
 
-func readData(bucket *oss.Bucket, threadNum int, testFileNum int, size int, summary *OssTestSummary) {
+func readData(bucket *oss.Bucket, threadNum int, testFileNum int, size int, summary *OssTestSummary, rangeSize int) {
 	startTime := time.Now()
 
 	//用一个线程池，并发度为threadNum，上传test_file_num个文件
@@ -174,7 +189,7 @@ func readData(bucket *oss.Bucket, threadNum int, testFileNum int, size int, summ
 		go func() {
 			defer wg.Done()
 			for fileInfo := range fileCh {
-				DownloadFile(bucket, fileInfo, &summary.requestDuration[fileInfo.Index])
+				DownloadFile(bucket, fileInfo, &summary.requestDuration[fileInfo.Index], rangeSize)
 			}
 		}()
 	}
@@ -200,7 +215,7 @@ func cleanAllData(bucket *oss.Bucket) {
 	isTruncated := true
 	deletedNum := 0
 	for isTruncated {
-		objectList, err := bucket.ListObjects(oss.Prefix(test_dir), oss.Marker(marker))
+		objectList, err := bucket.ListObjects(oss.Prefix(testDir), oss.Marker(marker))
 		if err != nil {
 			myPrintf("Failed to list objects: %s", err)
 			return
@@ -268,12 +283,28 @@ func parseGoroutineID(stack string) (prefix string, id int64, suffix string) {
 	return stack[:start], id, stack[start+len("goroutine "+idStr)+end:]
 }
 
-func DownloadFile(bucket *oss.Bucket, fileInfo MyFileInfo, i *int64) {
+func DownloadFile(bucket *oss.Bucket, fileInfo MyFileInfo, i *int64, rangeSizeKB int) {
 	// 将内存中的数据tmpData上传到OSS
 	fileName := fileInfo.FileName
+	fileSize := fileInfo.FileSize * KB
+	rangeSize := rangeSizeKB * KB
 	//reader := bytes.NewReader(tmpData)
 	startTime := time.Now()
-	content, err := bucket.GetObject(fileName)
+	var content io.ReadCloser
+	var err error
+	var isRangeRead bool = false
+	start := 0
+	end := fileSize - 1
+
+	if rangeSize > 0 && rangeSize < fileSize {
+		isRangeRead = true
+		start = rand.Intn(fileSize - rangeSize + 1)
+		end = start + rangeSize
+		content, err = bucket.GetObject(fileName, oss.Range(int64(start), int64(end)))
+	} else {
+		content, err = bucket.GetObject(fileName)
+	}
+
 	if err != nil {
 		myPrintf("Error: File upload ", fileName, err)
 	} else {
@@ -287,7 +318,8 @@ func DownloadFile(bucket *oss.Bucket, fileInfo MyFileInfo, i *int64) {
 
 		elapsedTime := time.Since(startTime)
 		*i = elapsedTime.Milliseconds()
-		myPrintf("#download #FieName %s #elapsedTime(ms) %d \n", fileName, elapsedTime.Milliseconds())
+		myPrintf("#download #FieName %s #elapsedTime(ms) %d fileSize %d  isRangeRead %t start %d end %d\n",
+			fileName, elapsedTime.Milliseconds(), fileSize, isRangeRead, start, end)
 	}
 }
 
